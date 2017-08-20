@@ -6,40 +6,41 @@
  * See LICENSE for licensing information
  *
  */
-#include <stdio.h>
-#include <stdlib.h>
+#include <assert.h>
+#include <err.h>
 #include <pwd.h>
-#include <sys/types.h>
-#include <string.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include <xcb/xcb.h>
 #include <xcb/xkb.h>
-#include <err.h>
-#include <assert.h>
 #ifdef __OpenBSD__
 #include <bsd_auth.h>
 #else
 #include <security/pam_appl.h>
 #endif
-#include <getopt.h>
-#include <string.h>
-#include <ev.h>
-#include <sys/mman.h>
-#include <xkbcommon/xkbcommon.h>
-#include <xkbcommon/xkbcommon-compose.h>
-#include <xkbcommon/xkbcommon-x11.h>
 #include <cairo.h>
 #include <cairo/cairo-xcb.h>
+#include <ev.h>
+#include <getopt.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <xkbcommon/xkbcommon-compose.h>
+#include <xkbcommon/xkbcommon-x11.h>
+#include <xkbcommon/xkbcommon.h>
 #ifdef __OpenBSD__
 #include <strings.h> /* explicit_bzero(3) */
 #endif
 
-#include "i3lock.h"
-#include "xcb.h"
+#include "blur.h"
 #include "cursors.h"
+#include "i3lock.h"
 #include "unlock_indicator.h"
+#include "xcb.h"
 #include "xinerama.h"
 
 #define TSTAMP_N_SECS(n) (n * 1.0)
@@ -813,6 +814,8 @@ int main(int argc, char *argv[]) {
     struct passwd *pw;
     char *username;
     char *image_path = NULL;
+    int blur_radius = 0;
+
 #ifndef __OpenBSD__
     int ret;
     struct pam_conv conv = {conv_callback, NULL};
@@ -831,6 +834,7 @@ int main(int argc, char *argv[]) {
         {"help", no_argument, NULL, 'h'},
         {"no-unlock-indicator", no_argument, NULL, 'u'},
         {"image", required_argument, NULL, 'i'},
+        {"blur", required_argument, NULL, 'B'},
         {"tiling", no_argument, NULL, 't'},
         {"ignore-empty-password", no_argument, NULL, 'e'},
         {"inactivity-timeout", required_argument, NULL, 'I'},
@@ -842,7 +846,7 @@ int main(int argc, char *argv[]) {
     if ((username = pw->pw_name) == NULL)
         errx(EXIT_FAILURE, "pw->pw_name is NULL.\n");
 
-    char *optstring = "hvnbdc:p:ui:teI:f";
+    char *optstring = "hvnbdc:p:ui:teI:B:f";
     while ((o = getopt_long(argc, argv, optstring, longopts, &longoptind)) != -1) {
         switch (o) {
             case 'v':
@@ -878,6 +882,14 @@ int main(int argc, char *argv[]) {
             case 'i':
                 image_path = strdup(optarg);
                 break;
+            case 'B':
+                if (strlen(optarg) == 0 || sscanf(optarg, "%d", &blur_radius) != 1) {
+                    errx(EXIT_FAILURE, "Blur radius must be a number.\n");
+                }
+                if (blur_radius < 1 || blur_radius > 400) {
+                    errx(EXIT_FAILURE, "Blur radius must be > 0 and <= 100.\n");
+                }
+                break;
             case 't':
                 tile = true;
                 break;
@@ -902,8 +914,12 @@ int main(int argc, char *argv[]) {
                 break;
             default:
                 errx(EXIT_FAILURE, "Syntax: i3lock [-v] [-n] [-b] [-d] [-c color] [-u] [-p win|default]"
-                                   " [-i image.png] [-t] [-e] [-I timeout] [-f]");
+                                   " [-i image.png] [-B] [-t] [-e] [-I timeout] [-f]");
         }
+    }
+
+    if (image_path && blur_radius > 0) {
+        errx(EXIT_FAILURE, "i3lock: --blur and --image cannot be used together.");
     }
 
     /* We need (relatively) random numbers for highlighting a random part of
@@ -1010,6 +1026,8 @@ int main(int argc, char *argv[]) {
             img = NULL;
         }
         free(image_path);
+    } else if (blur_radius > 0) {
+        img = screenshot_blur(conn, screen, blur_radius);
     }
 
     /* Pixmap on which the image is rendered to (if any) */
@@ -1025,6 +1043,8 @@ int main(int argc, char *argv[]) {
     auth_state = STATE_AUTH_LOCK;
     grab_pointer_and_keyboard(conn, screen, cursor);
 
+    //usleep(1000*1000*3);
+    //exit(0);
     pid_t pid = fork();
     /* The pid == -1 case is intentionally ignored here:
      * While the child process is useful for preventing other windows from
