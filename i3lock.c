@@ -66,6 +66,7 @@ static char password[512];
 static bool beep = false;
 bool debug_mode = false;
 bool unlock_indicator = true;
+bool unlock_indicator_rotate = false;
 char *modifier_string = NULL;
 static bool dont_fork = false;
 struct ev_loop *main_loop;
@@ -833,6 +834,7 @@ int main(int argc, char *argv[]) {
         {"debug", no_argument, NULL, 0},
         {"help", no_argument, NULL, 'h'},
         {"no-unlock-indicator", no_argument, NULL, 'u'},
+        {"rotate-unlock-indicator", no_argument, NULL, 'r'},
         {"image", required_argument, NULL, 'i'},
         {"blur", required_argument, NULL, 'B'},
         {"tiling", no_argument, NULL, 't'},
@@ -846,7 +848,7 @@ int main(int argc, char *argv[]) {
     if ((username = pw->pw_name) == NULL)
         errx(EXIT_FAILURE, "pw->pw_name is NULL.\n");
 
-    char *optstring = "hvnbdc:p:ui:teI:B:f";
+    char *optstring = "hvnbdc:p:uri:teI:B:f";
     while ((o = getopt_long(argc, argv, optstring, longopts, &longoptind)) != -1) {
         switch (o) {
             case 'v':
@@ -878,6 +880,9 @@ int main(int argc, char *argv[]) {
             }
             case 'u':
                 unlock_indicator = false;
+                break;
+            case 'r':
+                unlock_indicator_rotate = true;
                 break;
             case 'i':
                 image_path = strdup(optarg);
